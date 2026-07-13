@@ -18,6 +18,9 @@ const SettingsPage: React.FC = () => {
 
   const [newShipping, setNewShipping] = useState({ name: '', price: 0 });
   const [qrImageUrl, setQrImageUrl] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingPhone, setPairingPhone] = useState('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   // Gera o link único da loja
   const storeLink = `${window.location.origin}/?store=${auth.currentUser?.uid}`;
@@ -550,6 +553,7 @@ const SettingsPage: React.FC = () => {
                        }
                        const sessao = settings.botSessionId || 'vendas';
                        setQrImageUrl('');
+                       setPairingCode('');
                        
                        try {
                          await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
@@ -582,6 +586,65 @@ const SettingsPage: React.FC = () => {
                     Ver QR Code
                   </button>
 
+                  <div className="flex-1 min-w-[200px] flex gap-2">
+                    <input 
+                      type="tel"
+                      value={pairingPhone}
+                      onChange={e => setPairingPhone(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Número (Ex: 5511999999999)"
+                      className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-xs font-medium"
+                    />
+                    <button 
+                      disabled={isGeneratingCode}
+                      onClick={async () => {
+                         if (!settings.webhookUrl || !settings.webhookSecret) {
+                          return alert("Preencha o link do webhook e a senha primeiro.");
+                         }
+                         if (!pairingPhone || pairingPhone.length < 10) {
+                          return alert("Digite o número de telefone com DDD (Ex: 5511...)");
+                         }
+                         const sessao = settings.botSessionId || 'vendas';
+                         setQrImageUrl('');
+                         setPairingCode('');
+                         setIsGeneratingCode(true);
+                         
+                         try {
+                           // Algumas APIs permitem passar o número no iniciar-sessao para pairing code
+                           await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone: pairingPhone })
+                           });
+
+                           setTimeout(async () => {
+                              try {
+                                  // Endpoint hipotético para pairing code (comum em APIs Baileys/WPPConnect)
+                                  const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${pairingPhone}`);
+                                  const data = await res.json();
+
+                                  if (data.code) {
+                                      setPairingCode(data.code);
+                                      alert("Código de Pareamento gerado!");
+                                  } else {
+                                      alert("Código não disponível. Tente novamente ou use o QR Code.");
+                                  }
+                              } catch (e) {
+                                  alert("Erro ao buscar o código de pareamento.");
+                              } finally {
+                                  setIsGeneratingCode(false);
+                              }
+                           }, 3000);
+                         } catch(e) {
+                            alert(`Falha ao conectar com o servidor do Bot.`);
+                            setIsGeneratingCode(false);
+                         }
+                      }}
+                      className="px-4 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all whitespace-nowrap disabled:opacity-50"
+                    >
+                      {isGeneratingCode ? 'Gerando...' : 'Gerar Código'}
+                    </button>
+                  </div>
+
                   <button 
                     onClick={async () => {
                        if (!settings.webhookUrl || !settings.webhookSecret) {
@@ -604,6 +667,18 @@ const SettingsPage: React.FC = () => {
                   <div className="mt-4 p-4 bg-white border border-slate-200 rounded-xl flex flex-col items-center">
                      <p className="text-xs font-bold text-slate-600 mb-2">Aponte a câmera do seu celular para o WhatsApp web:</p>
                      <img src={qrImageUrl} alt="QR Code WhatsApp" className="w-64 h-64 border-4 border-white shadow-xl rounded-xl" />
+                  </div>
+                )}
+
+                {pairingCode && (
+                  <div className="mt-4 p-6 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center">
+                     <p className="text-sm font-bold text-indigo-900 mb-2">Código de Pareamento:</p>
+                     <div className="text-4xl font-black tracking-[0.2em] text-indigo-600 font-mono bg-white px-8 py-4 rounded-xl border-2 border-indigo-200 shadow-inner">
+                       {pairingCode}
+                     </div>
+                     <p className="text-[10px] text-indigo-400 mt-4 max-w-[280px] text-center">
+                       No seu WhatsApp: Configurações &gt; Aparelhos Conectados &gt; Conectar um Aparelho &gt; <b>Conectar com número de telefone</b>.
+                     </p>
                   </div>
                 )}
 

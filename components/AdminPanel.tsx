@@ -15,6 +15,9 @@ const AdminPanel: React.FC = () => {
   const [settings, setSettings] = useState(() => storage.getSettings());
   const [newSessionName, setNewSessionName] = useState('');
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
+  const [pairingCodes, setPairingCodes] = useState<Record<string, string>>({});
+  const [pairingPhones, setPairingPhones] = useState<Record<string, string>>({});
+  const [loadingCodes, setLoadingCodes] = useState<Record<string, boolean>>({});
   
   // Config States
   const [sysConfig, setSysConfig] = useState<SystemConfig>({
@@ -287,7 +290,7 @@ const AdminPanel: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="flex flex-col gap-2 w-full">
+                    <div className="flex flex-col gap-3 w-full">
                       <div className="flex flex-wrap gap-2 w-full">
                         <button 
                           onClick={async () => {
@@ -296,6 +299,7 @@ const AdminPanel: React.FC = () => {
                             }
                             
                             setQrCodes(prev => ({...prev, [sessao]: ''}));
+                            setPairingCodes(prev => ({...prev, [sessao]: ''}));
                             
                             try {
                               await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
@@ -324,7 +328,7 @@ const AdminPanel: React.FC = () => {
                           }}
                           className="flex-1 px-4 py-3 bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-200 transition-all text-center"
                         >
-                          Gerar QR Code
+                          QR Code
                         </button>
 
                         <button 
@@ -337,10 +341,71 @@ const AdminPanel: React.FC = () => {
                           Status
                         </button>
                       </div>
+
+                      <div className="flex gap-2 w-full">
+                        <input 
+                          type="tel"
+                          value={pairingPhones[sessao] || ''}
+                          onChange={e => setPairingPhones(prev => ({...prev, [sessao]: e.target.value.replace(/\D/g, '')}))}
+                          placeholder="Número 5511..."
+                          className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                        />
+                        <button 
+                          disabled={loadingCodes[sessao]}
+                          onClick={async () => {
+                            const phone = pairingPhones[sessao];
+                            if (!phone || phone.length < 10) return alert("Digite o número com DDD.");
+                            if (!settings.webhookUrl || !settings.webhookSecret) return alert("Configure as chaves do bot.");
+
+                            setLoadingCodes(prev => ({...prev, [sessao]: true}));
+                            setQrCodes(prev => ({...prev, [sessao]: ''}));
+                            setPairingCodes(prev => ({...prev, [sessao]: ''}));
+
+                            try {
+                              await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone })
+                              });
+
+                              setTimeout(async () => {
+                                 try {
+                                     const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${phone}`);
+                                     const data = await res.json();
+                                     if (data.code) {
+                                         setPairingCodes(prev => ({...prev, [sessao]: data.code}));
+                                     } else {
+                                         alert("Código não disponível.");
+                                     }
+                                 } catch (err) {
+                                     alert("Erro ao buscar código.");
+                                 } finally {
+                                     setLoadingCodes(prev => ({...prev, [sessao]: false}));
+                                 }
+                              }, 3000);
+                            } catch (e) {
+                               alert("Erro de conexão.");
+                               setLoadingCodes(prev => ({...prev, [sessao]: false}));
+                            }
+                          }}
+                          className="px-4 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {loadingCodes[sessao] ? '...' : 'Código'}
+                        </button>
+                      </div>
                       
                       {qrCodes[sessao] && (
-                        <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded-xl flex justify-center">
+                        <div className="mt-2 p-2 bg-white border border-slate-200 rounded-xl flex justify-center">
                            <img src={qrCodes[sessao]} alt={`QR Code ${sessao}`} className="w-48 h-48 rounded-lg shadow-sm" />
+                        </div>
+                      )}
+
+                      {pairingCodes[sessao] && (
+                        <div className="mt-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-col items-center">
+                           <p className="text-[10px] font-bold text-indigo-400 uppercase mb-1">Código de Pareamento</p>
+                           <div className="text-2xl font-black tracking-widest text-indigo-600 font-mono">
+                             {pairingCodes[sessao]}
+                           </div>
                         </div>
                       )}
                     </div>
