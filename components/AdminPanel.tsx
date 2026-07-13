@@ -362,29 +362,38 @@ const AdminPanel: React.FC = () => {
                             setPairingCodes(prev => ({...prev, [sessao]: ''}));
 
                             try {
-                              await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
+                              const initRes = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone })
+                                body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone, pairingCode: true })
                               });
+
+                              const initData = await initRes.json();
+
+                              // Se o código já vier na resposta inicial
+                              if (initData.code || initData.pairingCode) {
+                                 setPairingCodes(prev => ({...prev, [sessao]: initData.code || initData.pairingCode}));
+                                 setLoadingCodes(prev => ({...prev, [sessao]: false}));
+                                 return;
+                              }
 
                               setTimeout(async () => {
                                  try {
-                                     const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${phone}`);
+                                     const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${phone}&number=${phone}`);
                                      const data = await res.json();
-                                     if (data.code) {
-                                         setPairingCodes(prev => ({...prev, [sessao]: data.code}));
+                                     if (data.code || data.pairingCode) {
+                                         setPairingCodes(prev => ({...prev, [sessao]: data.code || data.pairingCode}));
                                      } else {
-                                         alert("Código não disponível.");
+                                         alert("Código não disponível no momento. Tente novamente.");
                                      }
                                  } catch (err) {
-                                     alert("Erro ao buscar código.");
+                                     alert("Erro ao buscar código no servidor.");
                                  } finally {
                                      setLoadingCodes(prev => ({...prev, [sessao]: false}));
                                  }
-                              }, 3000);
-                            } catch (e) {
-                               alert("Erro de conexão.");
+                              }, 4000);
+                            } catch (e: any) {
+                               alert(`Erro de conexão: ${e.message}`);
                                setLoadingCodes(prev => ({...prev, [sessao]: false}));
                             }
                           }}

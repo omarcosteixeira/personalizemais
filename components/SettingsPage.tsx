@@ -610,32 +610,45 @@ const SettingsPage: React.FC = () => {
                          
                          try {
                            // Algumas APIs permitem passar o número no iniciar-sessao para pairing code
-                           await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
+                           const initRes = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
                              method: 'POST',
                              headers: { 'Content-Type': 'application/json' },
-                             body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone: pairingPhone })
+                             body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret, phone: pairingPhone, pairingCode: true })
                            });
 
+                           const initData = await initRes.json();
+                           
+                           // Se o código já vier na resposta inicial
+                           if (initData.code || initData.pairingCode) {
+                              setPairingCode(initData.code || initData.pairingCode);
+                              alert("Código de Pareamento gerado com sucesso!");
+                              setIsGeneratingCode(false);
+                              return;
+                           }
+
+                           // Caso contrário, tenta buscar no endpoint específico após um tempo
                            setTimeout(async () => {
                               try {
-                                  // Endpoint hipotético para pairing code (comum em APIs Baileys/WPPConnect)
-                                  const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${pairingPhone}`);
+                                  // Tenta buscar o código. Algumas APIs usam 'phone', outras 'number'.
+                                  const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/pairing-code/${sessao}?phone=${pairingPhone}&number=${pairingPhone}`);
                                   const data = await res.json();
 
-                                  if (data.code) {
-                                      setPairingCode(data.code);
+                                  if (data.code || data.pairingCode) {
+                                      setPairingCode(data.code || data.pairingCode);
                                       alert("Código de Pareamento gerado!");
                                   } else {
-                                      alert("Código não disponível. Tente novamente ou use o QR Code.");
+                                      console.error("Resposta do servidor:", data);
+                                      alert("O servidor respondeu, mas não enviou o código. Verifique se o número está correto ou use o QR Code.");
                                   }
-                              } catch (e) {
-                                  alert("Erro ao buscar o código de pareamento.");
+                              } catch (e: any) {
+                                  console.error("Erro ao buscar pairing code:", e);
+                                  alert(`Erro na busca do código: ${e.message}`);
                               } finally {
                                   setIsGeneratingCode(false);
                               }
-                           }, 3000);
-                         } catch(e) {
-                            alert(`Falha ao conectar com o servidor do Bot.`);
+                           }, 4000);
+                         } catch(e: any) {
+                            alert(`Falha ao conectar com o servidor: ${e.message}`);
                             setIsGeneratingCode(false);
                          }
                       }}
